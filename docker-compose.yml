@@ -1,0 +1,64 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: hypertube_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${DATABASE_USER:-hypertube}
+      POSTGRES_PASSWORD: ${DATABASE_PASSWORD:-hypertube_password}
+      POSTGRES_DB: ${DATABASE_NAME:-hypertube_db}
+    ports:
+      - '5432:5432'
+    volumes:
+      - hypertube_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test:
+        [
+          'CMD-SHELL',
+          'pg_isready -U ${DATABASE_USER:-hypertube} -d ${DATABASE_NAME:-hypertube_db}',
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+      target: development
+    container_name: hypertube_backend
+    restart: unless-stopped
+    env_file:
+      - ./backend/.env
+    environment:
+      DATABASE_HOST: postgres
+      DATABASE_PORT: 5432
+    ports:
+      - '3001:3001'
+    volumes:
+      - ./backend/src:/usr/src/app/src
+      - /usr/src/app/node_modules
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: npm run start:dev
+
+  frontend:
+    build:
+      context: ./frontend
+      target: development
+    container_name: hypertube_frontend
+    restart: unless-stopped
+    environment:
+      VITE_API_URL: http://localhost:3001
+      WATCHPACK_POLLING: 'true'
+    ports:
+      - '3000:3000'
+    volumes:
+      - ./frontend:/usr/src/app
+      - /usr/src/app/node_modules
+    depends_on:
+      - backend
+    command: npm run dev
+
+volumes:
+  hypertube_postgres_data:
